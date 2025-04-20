@@ -11,6 +11,7 @@ export const getAllStudentsWithMarks = async (req, res) => {
     const students = await Student.findAll({
       include: [{
         model: User,
+        as: 'user',
         attributes: ['name', 'email']
       }]
     });
@@ -1194,6 +1195,73 @@ export const deleteUser = async (req, res) => {
   }
 };
 
+export const deleteStudent = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Find student with associated user
+    const student = await Student.findByPk(id, {
+      include: [{
+        model: User,
+        as: 'user'
+      }]
+    });
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    // Delete student record (soft delete)
+    await student.destroy();
+    
+    // Delete associated user account
+    if (student.user) {
+      await student.user.destroy();
+    }
+
+    res.json({
+      success: true,
+      message: 'Student deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting student:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete student',
+      error: error.message
+    });
+  }
+};
+
+export const getAllStudents = async (req, res) => {
+  try {
+    console.log('Fetching all students...');
+    const students = await Student.findAll({
+      include: [{
+        model: User,
+        as: 'user',
+        attributes: ['id', 'email', 'role']
+      }],
+      order: [['rollNumber', 'ASC']]
+    });
+
+    console.log(`Found ${students.length} students`);
+    return res.json({
+      success: true,
+      data: students
+    });
+  } catch (error) {
+    console.error('Error fetching students:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Error fetching students'
+    });
+  }
+};
+
 export default {
   getAllStudentsWithMarks,
   getDashboardStats,
@@ -1223,5 +1291,7 @@ export default {
   getAllUsers,
   createUser,
   updateUser,
-  deleteUser
+  deleteUser,
+  deleteStudent,
+  getAllStudents
 }; 
