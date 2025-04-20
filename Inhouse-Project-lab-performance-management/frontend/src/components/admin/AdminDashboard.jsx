@@ -3,6 +3,9 @@ import { getToken } from '../../lib/auth';
 import BatchManagement from './BatchManagement';
 import SubjectManagement from './SubjectManagement';
 import TeacherAllocation from './TeacherAllocation';
+import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
+import { Users } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -18,6 +21,7 @@ function AdminDashboard() {
       batches: 0
     }
   });
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchDashboardStats();
@@ -129,6 +133,10 @@ function AdminDashboard() {
     }
   };
 
+  const handleStudentCardClick = () => {
+    navigate('/admin/students');
+  };
+
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold text-[#155E95] mb-6">Admin Dashboard</h1>
@@ -212,10 +220,21 @@ function AdminDashboard() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Total Students</h3>
-                <p className="text-3xl font-bold text-[#155E95]">{stats.counts.students}</p>
-              </div>
+              <Card 
+                onClick={handleStudentCardClick}
+                className="cursor-pointer hover:shadow-md transition-shadow duration-200"
+              >
+                <CardHeader>
+                  <CardTitle className="text-lg font-medium text-[#155E95] flex items-center">
+                    <Users className="h-5 w-5 mr-2" />
+                    Students
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-3xl font-bold">{stats.counts.students}</p>
+                  <p className="text-sm text-gray-500 mt-1">Click to view all students</p>
+                </CardContent>
+              </Card>
               <div className="bg-white p-6 rounded-lg shadow">
                 <h3 className="text-lg font-medium text-gray-900 mb-2">Total Teachers</h3>
                 <p className="text-3xl font-bold text-[#155E95]">{stats.counts.teachers}</p>

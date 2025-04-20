@@ -66,7 +66,7 @@ const Student = sequelize.define('Student', {
   }
 }, {
   timestamps: true,
-  paranoid: true // Enable soft deletes
+  paranoid: false // Disable soft deletes
 });
 
 export default Student;

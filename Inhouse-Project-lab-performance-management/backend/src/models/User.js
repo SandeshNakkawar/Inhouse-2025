@@ -30,6 +30,7 @@ const User = sequelize.define('User', {
   }
 }, {
   timestamps: true,
+  paranoid: false, // Disable soft deletes for User model
   hooks: {
     beforeCreate: async (user) => {
       if (user.password) {

@@ -25,6 +25,9 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Setup model associations
+setupAssociations();
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/teachers', teacherRoutes);
@@ -32,9 +35,6 @@ app.use('/api/students', studentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/assessments', assessmentRoutes);
 app.use('/api/batches', batchRoutes);
-
-// Setup model associations
-setupAssociations();
 
 // Database sync and server start
 const PORT = config.server.port || 3000;

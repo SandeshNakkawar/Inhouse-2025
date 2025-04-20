@@ -28,7 +28,9 @@ import {
   createUser,
   updateUser,
   deleteUser,
-  getAllUsers
+  getAllUsers,
+  deleteStudent,
+  getAllStudents
 } from '../controllers/adminController.js';
 import { authenticateToken, authorizeAdmin } from '../middleware/auth.js';
 import { checkAdminPermissions } from '../middleware/checkAdminPermissions.js';
@@ -47,7 +49,16 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ storage: storage });
+const upload = multer({
+  dest: 'uploads/',
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'text/csv') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only CSV files are allowed'));
+    }
+  }
+});
 
 // Apply authentication and admin authorization middleware to all routes
 router.use(authenticateToken, authorizeAdmin, checkAdminPermissions);
@@ -98,5 +109,9 @@ router.get('/users', getAllUsers);
 router.post('/users', createUser);
 router.put('/users/:id', updateUser);
 router.delete('/users/:id', deleteUser);
+
+// Student routes
+router.delete('/students/:id', deleteStudent);
+router.get('/students', getAllStudents);
 
 export default router; 

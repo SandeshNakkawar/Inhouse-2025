@@ -1,62 +1,109 @@
 import { useState, useEffect } from 'react';
 import { getToken } from '../../lib/auth';
+import { deleteStudent, getAllStudents } from '../../services/adminService';
+import { Trash2, Users, ArrowLeft } from 'lucide-react';
+import { toast } from 'react-toastify';
+import { useNavigate } from 'react-router-dom';
+import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
 
 function AdminDashboard() {
   const [students, setStudents] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState('students'); // 'students' or 'stats'
+  const [activeTab, setActiveTab] = useState('stats'); // 'students' or 'stats'
+  const [deletingStudentId, setDeletingStudentId] = useState(null);
+  const [showStudentList, setShowStudentList] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const token = getToken();
-        
-        // Fetch students with marks
-        const studentsResponse = await fetch('http://localhost:3000/api/admin/students/marks', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (!studentsResponse.ok) {
-          throw new Error('Failed to fetch student data');
-        }
-        
-        const studentsData = await studentsResponse.json();
-        setStudents(studentsData);
-        
-        // Fetch dashboard stats
-        const statsResponse = await fetch('http://localhost:3000/api/admin/dashboard', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (!statsResponse.ok) {
-          throw new Error('Failed to fetch dashboard statistics');
-        }
-        
-        const statsData = await statsResponse.json();
-        setStats(statsData);
-        
-      } catch (err) {
-        setError(err.message);
-        console.error('Error fetching admin data:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
     fetchData();
   }, []);
 
-  const renderStudentsTab = () => (
-    <div className="overflow-x-auto">
-      <h2 className="text-xl font-semibold mb-4">Student Marks</h2>
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const token = getToken();
       
+      // Fetch students with marks
+      const studentsData = await getAllStudents();
+      setStudents(studentsData);
+      
+      // Fetch dashboard stats
+      const statsResponse = await fetch('http://localhost:3000/api/admin/dashboard', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!statsResponse.ok) {
+        throw new Error('Failed to fetch dashboard statistics');
+      }
+      
+      const statsData = await statsResponse.json();
+      setStats(statsData);
+      
+    } catch (err) {
+      setError(err.message);
+      console.error('Error fetching admin data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteStudent = async (studentId) => {
+    if (!window.confirm('Are you sure you want to delete this student? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setDeletingStudentId(studentId);
+      await deleteStudent(studentId);
+      
+      // Remove the deleted student from the state
+      setStudents(students.filter(student => student.student.id !== studentId));
+      
+      // Update stats
+      if (stats) {
+        setStats({
+          ...stats,
+          counts: {
+            ...stats.counts,
+            students: stats.counts.students - 1
+          }
+        });
+      }
+      
+      toast.success('Student deleted successfully');
+    } catch (error) {
+      console.error('Error deleting student:', error);
+      toast.error('Failed to delete student');
+    } finally {
+      setDeletingStudentId(null);
+    }
+  };
+
+  const handleStudentCardClick = () => {
+    navigate('/admin/students');
+  };
+
+  const handleBackToDashboard = () => {
+    setShowStudentList(false);
+  };
+
+  const renderStudentList = () => (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl font-semibold">Student List</h2>
+        <button
+          onClick={handleBackToDashboard}
+          className="flex items-center text-[#155E95] hover:text-[#0f4a75] transition-colors duration-200"
+        >
+          <ArrowLeft className="h-5 w-5 mr-1" />
+          Back to Dashboard
+        </button>
+      </div>
+
       {loading ? (
         <div className="flex justify-center">
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#155E95]"></div>
@@ -64,117 +111,119 @@ function AdminDashboard() {
       ) : error ? (
         <div className="text-red-500">{error}</div>
       ) : (
-        <table className="min-w-full bg-white border border-gray-200">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="px-4 py-2 text-left text-sm font-medium text-gray-600 border-b">Roll Number</th>
-              <th className="px-4 py-2 text-left text-sm font-medium text-gray-600 border-b">Email</th>
-              <th className="px-4 py-2 text-left text-sm font-medium text-gray-600 border-b">Attendance (20)</th>
-              <th className="px-4 py-2 text-left text-sm font-medium text-gray-600 border-b">Avg Assignment (10)</th>
-              <th className="px-4 py-2 text-left text-sm font-medium text-gray-600 border-b">Avg RPP (5)</th>
-              <th className="px-4 py-2 text-left text-sm font-medium text-gray-600 border-b">Avg SPO (5)</th>
-              <th className="px-4 py-2 text-left text-sm font-medium text-gray-600 border-b">Total Marks</th>
-            </tr>
-          </thead>
-          <tbody>
-            {students.map((studentData) => (
-              <tr key={studentData.student.id} className="hover:bg-gray-50">
-                <td className="px-4 py-2 border-b">{studentData.student.rollNumber}</td>
-                <td className="px-4 py-2 border-b">{studentData.student.email}</td>
-                <td className="px-4 py-2 border-b">{studentData.student.attendanceMarks.toFixed(2)}</td>
-                <td className="px-4 py-2 border-b">{studentData.statistics.avgAssignmentMarks.toFixed(2)}</td>
-                <td className="px-4 py-2 border-b">{studentData.statistics.avgRppMarks.toFixed(2)}</td>
-                <td className="px-4 py-2 border-b">{studentData.statistics.avgSpoMarks.toFixed(2)}</td>
-                <td className="px-4 py-2 border-b font-semibold">{studentData.statistics.totalMarks.toFixed(2)}</td>
+        <div className="overflow-x-auto">
+          <table className="min-w-full bg-white border border-gray-200">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="px-4 py-2 text-left text-sm font-medium text-gray-600 border-b">Roll Number</th>
+                <th className="px-4 py-2 text-left text-sm font-medium text-gray-600 border-b">Name</th>
+                <th className="px-4 py-2 text-left text-sm font-medium text-gray-600 border-b">Email</th>
+                <th className="px-4 py-2 text-left text-sm font-medium text-gray-600 border-b">Year</th>
+                <th className="px-4 py-2 text-left text-sm font-medium text-gray-600 border-b">Division</th>
+                <th className="px-4 py-2 text-left text-sm font-medium text-gray-600 border-b">Actions</th>
               </tr>
-            ))}
-            {students.length === 0 && (
-              <tr>
-                <td colSpan="7" className="px-4 py-2 text-center text-gray-500">No student records found</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {students.map((studentData) => (
+                <tr key={studentData.student.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-2 border-b">{studentData.student.rollNumber}</td>
+                  <td className="px-4 py-2 border-b">{studentData.student.name || 'N/A'}</td>
+                  <td className="px-4 py-2 border-b">{studentData.student.email}</td>
+                  <td className="px-4 py-2 border-b">{studentData.student.year || 'N/A'}</td>
+                  <td className="px-4 py-2 border-b">{studentData.student.division || 'N/A'}</td>
+                  <td className="px-4 py-2 border-b">
+                    <button
+                      onClick={() => handleDeleteStudent(studentData.student.id)}
+                      disabled={deletingStudentId === studentData.student.id}
+                      className="text-red-500 hover:text-red-700 transition-colors duration-200 disabled:opacity-50"
+                      title="Delete Student"
+                    >
+                      <Trash2 className="h-5 w-5" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {students.length === 0 && (
+                <tr>
+                  <td colSpan="6" className="px-4 py-2 text-center text-gray-500">No student records found</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
 
   const renderStatsTab = () => (
-    <div>
-      <h2 className="text-xl font-semibold mb-4">Dashboard Statistics</h2>
-      
-      {loading ? (
-        <div className="flex justify-center">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#155E95]"></div>
-        </div>
-      ) : error ? (
-        <div className="text-red-500">{error}</div>
-      ) : stats ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white p-4 rounded shadow">
-            <h3 className="text-lg font-medium text-[#155E95]">Students</h3>
-            <p className="text-3xl font-bold mt-2">{stats.counts.students}</p>
-          </div>
-          
-          <div className="bg-white p-4 rounded shadow">
-            <h3 className="text-lg font-medium text-[#155E95]">Assignments</h3>
-            <p className="text-3xl font-bold mt-2">{stats.counts.assignments}</p>
-          </div>
-          
-          <div className="bg-white p-4 rounded shadow">
-            <h3 className="text-lg font-medium text-[#155E95]">Avg. Attendance Marks</h3>
-            <p className="text-3xl font-bold mt-2">{stats.averages.attendanceMarks.toFixed(2)}/20</p>
-          </div>
-          
-          <div className="bg-white p-4 rounded shadow col-span-1 md:col-span-3">
-            <h3 className="text-lg font-medium text-[#155E95]">Assignment Submission Rate</h3>
-            <div className="mt-2 relative pt-1">
-              <div className="flex mb-2 items-center justify-between">
-                <div>
-                  <span className="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full text-teal-600 bg-teal-200">
-                    {stats.submissions.submissionRate.toFixed(2)}%
-                  </span>
-                </div>
-              </div>
-              <div className="overflow-hidden h-2 mb-4 text-xs flex rounded bg-teal-200">
-                <div style={{ width: `${stats.submissions.submissionRate}%` }} className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-teal-500"></div>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span>Submitted: {stats.submissions.submitted}</span>
-                <span>Pending: {stats.submissions.pending}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="text-gray-500">No statistics available</div>
-      )}
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <Card 
+        className="cursor-pointer hover:shadow-lg transition-shadow duration-200"
+        onClick={handleStudentCardClick}
+      >
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-[#155E95]" />
+            Total Students
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-3xl font-bold text-[#155E95]">
+            {stats?.counts?.students || 0}
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-[#155E95]" />
+            Total Teachers
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-3xl font-bold text-[#155E95]">
+            {stats?.counts?.teachers || 0}
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-[#155E95]" />
+            Total Batches
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-3xl font-bold text-[#155E95]">
+            {stats?.counts?.batches || 0}
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#155E95]"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-red-500 text-center p-4">
+        {error}
+      </div>
+    );
+  }
+
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold text-[#155E95] mb-4">Admin Dashboard</h1>
-      
-      {/* Tabs */}
-      <div className="flex border-b mb-4">
-        <button
-          className={`px-4 py-2 ${activeTab === 'students' ? 'text-[#155E95] border-b-2 border-[#155E95] font-medium' : 'text-gray-500'}`}
-          onClick={() => setActiveTab('students')}
-        >
-          Student Marks
-        </button>
-        <button
-          className={`px-4 py-2 ${activeTab === 'stats' ? 'text-[#155E95] border-b-2 border-[#155E95] font-medium' : 'text-gray-500'}`}
-          onClick={() => setActiveTab('stats')}
-        >
-          Statistics
-        </button>
-      </div>
-      
-      <div className="bg-white rounded-lg shadow p-6">
-        {activeTab === 'students' ? renderStudentsTab() : renderStatsTab()}
-      </div>
+      <h1 className="text-2xl font-bold text-[#155E95] mb-6">Admin Dashboard</h1>
+      {showStudentList ? renderStudentList() : renderStatsTab()}
     </div>
   );
 }

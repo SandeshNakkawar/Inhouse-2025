@@ -111,4 +111,47 @@ export const getTeachers = async () => {
     console.error('Error fetching teachers:', error);
     throw error;
   }
+};
+
+// Get all students
+export const getAllStudents = async () => {
+  try {
+    const response = await api.get('/admin/students');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching students:', error);
+    throw error;
+  }
+};
+
+// Delete a student
+export const deleteStudent = async (id) => {
+  try {
+    const response = await api.delete(`/admin/students/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting student:', error);
+    throw error;
+  }
+};
+
+// Upload students CSV
+export const uploadStudentsCSV = async (file) => {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await api.post('/admin/upload/students', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error uploading students data:', error);
+    if (error.response?.data?.message) {
+      throw new Error(error.response.data.message);
+    }
+    throw error;
+  }
 }; 

@@ -825,160 +825,208 @@ export const uploadData = async (req, res) => {
     if (!file) {
       return res.status(400).json({ message: 'No file uploaded' });
     }
-    
+
+    // Read file content synchronously to avoid event handling issues
+    const fileContent = fs.readFileSync(file.path, 'utf-8');
     const results = [];
     
-    // Parse CSV file
-    fs.createReadStream(file.path)
-      .pipe(csv())
-      .on('data', (data) => results.push(data))
-      .on('end', async () => {
-        // Remove the temporary file
-        fs.unlinkSync(file.path);
-        
-        if (type === 'students') {
-          // Process student data
-          const studentPromises = results.map(async (row) => {
-            try {
-              // Validate required fields
-              if (!row.name || !row.email || !row.rollNumber || !row.year || !row.division) {
-                return { success: false, email: row.email, error: 'Missing required fields' };
-              }
-              
-              // Check if user already exists
-              let user = await User.findOne({ where: { email: row.email } });
-              
-              if (!user) {
-                // Create new user
-                user = await User.create({
-                  name: row.name,
-                  email: row.email,
-                  password: row.password || 'password123', // Default password
-                  role: 'student'
-                });
-              }
-              
-              // Check if student already exists
-              const existingStudent = await Student.findOne({ 
-                where: { userId: user.id } 
-              });
-              
-              if (!existingStudent) {
-                // Create new student
-                await Student.create({
-                  userId: user.id,
-                  name: row.name,
-                  email: row.email,
-                  rollNumber: row.rollNumber,
-                  year: row.year,
-                  division: row.division
-                });
-              } else {
-                // Update existing student
-                await existingStudent.update({
-                  name: row.name,
-                  email: row.email,
-                  rollNumber: row.rollNumber,
-                  year: row.year,
-                  division: row.division
-                });
-              }
-              
-              return { success: true, email: row.email };
-            } catch (err) {
-              console.error(`Error processing student ${row.email}:`, err);
-              return { success: false, email: row.email, error: err.message };
-            }
+    // Parse CSV content
+    await new Promise((resolve, reject) => {
+      fs.createReadStream(file.path)
+        .pipe(csv())
+        .on('data', (data) => results.push(data))
+        .on('end', resolve)
+        .on('error', reject);
+    });
+
+    // Remove the temporary file
+    fs.unlinkSync(file.path);
+
+    if (type === 'students') {
+      // Process student data
+      const studentPromises = results.map(async (row) => {
+        try {
+          // Validate required fields
+          if (!row.name || !row.email || !row.rollNumber || !row.year || !row.division) {
+            return { 
+              success: false, 
+              email: row.email || 'No email provided', 
+              error: 'Missing required fields' 
+            };
+          }
+
+          // Validate year and division values
+          if (!['SE', 'TE', 'BE'].includes(row.year)) {
+            return {
+              success: false,
+              email: row.email,
+              error: 'Invalid year value. Must be SE, TE, or BE'
+            };
+          }
+
+          if (!['9', '10', '11'].includes(row.division)) {
+            return {
+              success: false,
+              email: row.email,
+              error: 'Invalid division value. Must be 9, 10, or 11'
+            };
+          }
+
+          // Check if user already exists
+          let user = await User.findOne({ where: { email: row.email } });
+          
+          if (!user) {
+            // Create new user
+            user = await User.create({
+              name: row.name,
+              email: row.email,
+              password: row.password || 'password123', // Default password
+              role: 'student'
+            });
+          }
+          
+          // Check if student already exists
+          const existingStudent = await Student.findOne({ 
+            where: { 
+              [Op.or]: [
+                { userId: user.id },
+                { rollNumber: row.rollNumber }
+              ]
+            } 
           });
           
-          const studentResults = await Promise.all(studentPromises);
-          const successCount = studentResults.filter(r => r.success).length;
-          const failureCount = studentResults.filter(r => !r.success).length;
+          if (!existingStudent) {
+            // Create new student
+            await Student.create({
+              userId: user.id,
+              name: row.name,
+              email: row.email,
+              rollNumber: row.rollNumber,
+              year: row.year,
+              division: row.division,
+              department: row.department || 'Computer Engineering',
+              isActive: true
+            });
+          } else {
+            // Update existing student
+            await existingStudent.update({
+              name: row.name,
+              email: row.email,
+              rollNumber: row.rollNumber,
+              year: row.year,
+              division: row.division,
+              department: row.department || existingStudent.department
+            });
+          }
           
-          return res.status(200).json({
-            message: `Successfully processed ${successCount} students, ${failureCount} failed`,
-            details: studentResults
-          });
-        } else if (type === 'teachers') {
-          // Process teacher data
-          const teacherPromises = results.map(async (row) => {
-            try {
-              // Validate required fields
-              if (!row.name || !row.email || !row.department) {
-                return { success: false, email: row.email, error: 'Missing required fields' };
-              }
-              
-              // Check if user already exists
-              let user = await User.findOne({ where: { email: row.email } });
-              
-              if (!user) {
-                // Create new user with default password if none provided
-                const defaultPassword = 'teacher123';
-                user = await User.create({
-                  name: row.name,
-                  email: row.email,
-                  password: row.password || defaultPassword,
-                  role: 'teacher'
-                });
-              } else if (row.password) {
-                // Update password if provided in CSV
-                user.password = row.password;
-                await user.save();
-              }
-              
-              // Check if teacher already exists
-              const existingTeacher = await Teacher.findOne({ where: { userId: user.id } });
-              
-              if (!existingTeacher) {
-                // Create new teacher
-                await Teacher.create({
-                  userId: user.id,
-                  name: row.name,
-                  email: row.email,
-                  department: row.department,
-                  subjects: row.subjects ? JSON.parse(row.subjects.replace(/'/g, '"')) : [],
-                  phone: row.phone || null
-                });
-              } else {
-                // Update existing teacher
-                await existingTeacher.update({
-                  name: row.name,
-                  email: row.email,
-                  department: row.department,
-                  subjects: row.subjects ? JSON.parse(row.subjects.replace(/'/g, '"')) : existingTeacher.subjects,
-                  phone: row.phone || existingTeacher.phone
-                });
-              }
-              
-              return { 
-                success: true, 
-                email: row.email,
-                defaultPassword: !row.password ? 'teacher123' : undefined
-              };
-            } catch (err) {
-              console.error(`Error processing teacher ${row.email}:`, err);
-              return { success: false, email: row.email, error: err.message };
-            }
-          });
-          
-          const teacherResults = await Promise.all(teacherPromises);
-          const successCount = teacherResults.filter(r => r.success).length;
-          const failureCount = teacherResults.filter(r => !r.success).length;
-          
-          // Get list of teachers with default passwords
-          const teachersWithDefaultPasswords = teacherResults
-            .filter(r => r.success && r.defaultPassword)
-            .map(r => ({ email: r.email, password: r.defaultPassword }));
-          
-          return res.status(200).json({
-            message: `Successfully processed ${successCount} teachers, ${failureCount} failed`,
-            details: teacherResults,
-            defaultPasswords: teachersWithDefaultPasswords.length > 0 ? teachersWithDefaultPasswords : undefined
-          });
-        } else {
-          return res.status(400).json({ message: 'Invalid upload type' });
+          return { 
+            success: true, 
+            email: row.email,
+            defaultPassword: !row.password ? 'password123' : undefined
+          };
+        } catch (err) {
+          console.error(`Error processing student ${row.email}:`, err);
+          return { 
+            success: false, 
+            email: row.email, 
+            error: err.message 
+          };
         }
       });
+      
+      const studentResults = await Promise.all(studentPromises);
+      const successCount = studentResults.filter(r => r.success).length;
+      const failureCount = studentResults.filter(r => !r.success).length;
+      
+      // Get list of students with default passwords
+      const studentsWithDefaultPasswords = studentResults
+        .filter(r => r.success && r.defaultPassword)
+        .map(r => ({ email: r.email, password: r.defaultPassword }));
+      
+      return res.status(200).json({
+        message: `Successfully processed ${successCount} students, ${failureCount} failed`,
+        details: studentResults,
+        defaultPasswords: studentsWithDefaultPasswords.length > 0 ? studentsWithDefaultPasswords : undefined
+      });
+    } else if (type === 'teachers') {
+      // Process teacher data
+      const teacherPromises = results.map(async (row) => {
+        try {
+          // Validate required fields
+          if (!row.name || !row.email || !row.department) {
+            return { success: false, email: row.email, error: 'Missing required fields' };
+          }
+          
+          // Check if user already exists
+          let user = await User.findOne({ where: { email: row.email } });
+          
+          if (!user) {
+            // Create new user with default password if none provided
+            const defaultPassword = 'teacher123';
+            user = await User.create({
+              name: row.name,
+              email: row.email,
+              password: row.password || defaultPassword,
+              role: 'teacher'
+            });
+          } else if (row.password) {
+            // Update password if provided in CSV
+            user.password = row.password;
+            await user.save();
+          }
+          
+          // Check if teacher already exists
+          const existingTeacher = await Teacher.findOne({ where: { userId: user.id } });
+          
+          if (!existingTeacher) {
+            // Create new teacher
+            await Teacher.create({
+              userId: user.id,
+              name: row.name,
+              email: row.email,
+              department: row.department,
+              subjects: row.subjects ? JSON.parse(row.subjects.replace(/'/g, '"')) : [],
+              phone: row.phone || null
+            });
+          } else {
+            // Update existing teacher
+            await existingTeacher.update({
+              name: row.name,
+              email: row.email,
+              department: row.department,
+              subjects: row.subjects ? JSON.parse(row.subjects.replace(/'/g, '"')) : existingTeacher.subjects,
+              phone: row.phone || existingTeacher.phone
+            });
+          }
+          
+          return { 
+            success: true, 
+            email: row.email,
+            defaultPassword: !row.password ? 'teacher123' : undefined
+          };
+        } catch (err) {
+          console.error(`Error processing teacher ${row.email}:`, err);
+          return { success: false, email: row.email, error: err.message };
+        }
+      });
+      
+      const teacherResults = await Promise.all(teacherPromises);
+      const successCount = teacherResults.filter(r => r.success).length;
+      const failureCount = teacherResults.filter(r => !r.success).length;
+      
+      // Get list of teachers with default passwords
+      const teachersWithDefaultPasswords = teacherResults
+        .filter(r => r.success && r.defaultPassword)
+        .map(r => ({ email: r.email, password: r.defaultPassword }));
+      
+      return res.status(200).json({
+        message: `Successfully processed ${successCount} teachers, ${failureCount} failed`,
+        details: teacherResults,
+        defaultPasswords: teachersWithDefaultPasswords.length > 0 ? teachersWithDefaultPasswords : undefined
+      });
+    } else {
+      return res.status(400).json({ message: 'Invalid upload type' });
+    }
   } catch (err) {
     console.error('Error uploading data:', err);
     return res.status(500).json({ message: 'Error uploading data', error: err.message });
@@ -1214,12 +1262,18 @@ export const deleteStudent = async (req, res) => {
       });
     }
 
-    // Delete student record (soft delete)
-    await student.destroy();
+    // Store the user ID before deleting the student
+    const userId = student.user ? student.user.id : null;
+
+    // Delete student record with force: true to ensure actual deletion
+    await student.destroy({ force: true });
     
-    // Delete associated user account
-    if (student.user) {
-      await student.user.destroy();
+    // Delete associated user account if it exists
+    if (userId) {
+      await User.destroy({ 
+        where: { id: userId },
+        force: true
+      });
     }
 
     res.json({
